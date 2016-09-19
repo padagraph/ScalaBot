@@ -1,6 +1,8 @@
 package io.padagraph.client
 
-import scala.collection.{mutable, immutable}
+import play.api.libs.json.{JsObject, JsString}
+
+import scala.collection.{immutable, mutable}
 /**
   * Created by pierre on 9/16/16.
   */
@@ -10,4 +12,7 @@ trait DataType {
   val meta: immutable.Map[String, String] = Map.empty
   val attributesMapping: immutable.Map[String, AttributeType]
   protected val properties: mutable.Map[String, String] =  new mutable.HashMap()
+  def getPropertiesAsJson(): JsObject = JsObject(properties.map {
+    case (k,v) => k -> JsString(v)
+  })
 }

@@ -11,10 +11,23 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
  // type E = Edge[N,N]
  // type G = Graph[N,E]
 
-  def getGraph(): Option[JsObject] = {
+  private def ApiPdg(padaGraphObject: PadaGraphObject) = {
+    val url = padaGraphObject match {
+      case PdgGraph => s"$serverURL/graphs/create"
+      case PdgNodeType => s"$serverURL/g/${graph.name}/nodetype"
+      case PdgEdgeType => s"$serverURL/g/${graph.name}/edgetype"
+      case PdgNode => s"$serverURL/g/${graph.name}/node"
+      case PdgEdge => s"$serverURL/g/${graph.name}/edge"
+    }
+    Http(url).header("Content-Type", "application/json").header("Authorization", identToken)
+  }
+
+
+  def getGraphInfo: Option[JsObject] = {
     val url = s"$serverURL/graphs/g/${graph.name}"
     val response = Http(url).asString
-    if(response.headers.getOrElse("Status",List(""))(0).contains("200 OK")) {
+    response.code
+    if(response.code == 200) {
       val schema = (Json.parse(response.body) \ graph.name).as[JsObject]
       Some(schema)
     }
@@ -23,7 +36,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
   }
 
   def buildTypesIDMapping(): Map[String, Map[String,String]] = {
-    getGraph() match {
+    getGraphInfo match {
       case Some(schema) =>
         val jsNodeTypes = (schema \ "nodetypes").as[Array[JsObject]]
         val jsEdgeTypes = (schema \ "edgetypes").as[Array[JsObject]]
@@ -39,41 +52,69 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
 
   //Edition
 
-  def hasGraph(graphname: String): Boolean
+  def graphExists(): Boolean = {
+    getGraphInfo match {
+      case Some(info) => info.fields.exists( _._1 == graph.name)
+      case None => false
+    }
 
-  def createGraph(): Boolean
+  }
 
-  def createNodeType(n: Node): Boolean
+  def createGraph(): Boolean = {
 
-  def createEdgeType(e:E):  Boolean
+    val payload = JsObject(Seq(
+      "name" -> JsString(graph.name),
+      "description" -> JsString(graph.description),
+      "image" -> JsString(graph.image),
+      "tags" -> JsArray(graph.tags map JsString)
+    )).toString()
 
-  def postNode(n: N): Boolean
+    val request = ApiPdg(PdgGraph).postData(payload)
+    val response = request.asString
+    response.code == 200
+  }
 
-  def postEdge(e: E): Boolean
+  def createNodeType(n: Node): Boolean = {
 
-  def deleteNode(n: N): Boolean
+    val payload = JsObject(Seq(
+      "name" -> JsString(n.typeName),
+      "description" -> JsString(n.typeDescription),
+      "properties" -> n.getPropertiesAsJson()
+    )).toString()
 
-  def deleteEdge(n: N): Boolean
+    val response = ApiPdg(PdgNodeType).postData(payload).asString
+    response == 200
+  }
 
-  def starNode(n: N): Boolean
+  def createEdgeType(e:E):  Boolean = false
 
-  def unstarNode(n:N): Boolean
+  def postNode(n: N): Boolean = false
+
+  def postEdge(e: E): Boolean = false
+
+  def deleteNode(n: N): Boolean = false
+
+  def deleteEdge(n: N): Boolean = false
+
+  def starNode(n: N): Boolean = false
+
+  def unstarNode(n:N): Boolean = false
 
 
   // finds
 
-  def findNodes(n: Node, start: Int=0, limit: Option[Int]=Some(100)): Stream[N]
+  def findNodes(n: Node, start: Int=0, limit: Option[Int]=Some(100)): Stream[N] = Stream.empty[N]
 
-  def iterNeighbors(n: Node, start: Int=0, limit: Int=100): Stream[N]
+  def iterNeighbors(n: Node, start: Int=0, limit: Int=100): Stream[N] = Stream.empty[N]
 
-  def prox(pzero: Map[Node, Double],
+  def prox(pzero: Map[N, Double],
            step: Int=3,
-           weights: Option[Map[Node, Double]]=None,
+           weights: Option[Map[N, Double]]=None,
            filterEdgeTypes:List[String]=Nil,
            filterNodeTypes:List[String]=Nil,
-           limit: Int=100) : Map[Node, Double]
+           limit: Int=100) : Map[N, Double] = Map.empty[N, Double]
 
-  def getSubgraph(nodesUuids: List[String]): (Set[N],Set[E])
+  def getSubgraph(nodesUuids: List[String]): (Set[N],Set[E]) = (Set.empty[N], Set.empty[E])
 
 
 

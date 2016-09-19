@@ -66,9 +66,21 @@ object Social {
 
     override val name: String = "social"
     override val owner: String = "pierre"
+    override val description =
+      """
+        | blabla blabla
+        | bla blablabla
+      """.stripMargin
+
+    override val tags = Array("social", "peoples", "friendship")
+
+    override val image = ""
 
     override val nodes:Set[SocialNodes] = Set(n1, n2)
     override val edges:Set[SocialEdges] = Set(r1)
   }
+
+  val tok = "WyJwQHAuaW8iLCIkMmIkMTIkR1NlalA4RFdoRjhoTC8wdGJCY3BrT2ZBV2QwYi5keE43akhHM3FVN3lCWGxPMEllTmZYOXkiXQ.CsB5EA.YridEDeCLnvvkB0BonsapcdOjXQ"
+  val syn = new Synchronizer[SocialNodes, SocialEdges, SocialGraph.type ]("http://localhost:5000", tok, SocialGraph)
 
 }
