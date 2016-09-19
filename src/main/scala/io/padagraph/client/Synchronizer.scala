@@ -26,7 +26,6 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
   def getGraphInfo: Option[JsObject] = {
     val url = s"$serverURL/graphs/g/${graph.name}"
     val response = Http(url).asString
-    response.code
     if(response.code == 200) {
       val schema = (Json.parse(response.body) \ graph.name).as[JsObject]
       Some(schema)
@@ -75,15 +74,9 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
   }
 
   def createNodeType(n: Node): Boolean = {
-
-    val payload = JsObject(Seq(
-      "name" -> JsString(n.typeName),
-      "description" -> JsString(n.typeDescription),
-      "properties" -> n.getPropertiesAsJson()
-    )).toString()
-
+    val payload = stringOfDataType(n)
     val response = ApiPdg(PdgNodeType).postData(payload).asString
-    response == 200
+    response.code == 200
   }
 
   def createEdgeType(e:E):  Boolean = false
@@ -125,7 +118,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](serverURL: String, i
     JsObject(Seq(
       "name" -> JsString(x.typeName),
       "description" -> JsString(x.typeDescription),
-      "properties" -> JsObject(x.attributesMapping.map({ case (k:String, v:AttributeType) => (k  -> JsObject(Seq("type" -> JsString(v.name))))}))
+      "properties" -> JsObject(x.attributesMapping.map({ case (k:String, v:AttributeType) => k  -> JsObject(Seq("type" -> JsString(v.name)))}))
     )).toString()
   }
 }
