@@ -9,41 +9,46 @@ object Social {
   abstract class SocialNodes extends Node
   abstract class SocialEdges extends Edge[SocialNodes, SocialNodes]
 
+  /**
+    * Model indiviuals
+    * will correspond to a NodeType in Padagraph
+    * instances will be UNodes
+    */
   class Person extends SocialNodes {
     override val typeName: String = "person"
-    override val attributesMapping: Map[String, String] =
+
+    //declaration of attributes type
+    override val attributesMapping: Map[String, AttributeType] =
       Map(
-        "name" -> "Text",
-        "age" -> "Numeric"
+        "name" -> Text,
+        "age" -> Numeric
       )
 
-    override val meta: Map[String, String] = Map.empty
-    override protected val properties: mutable.Map[String, String] = new mutable.HashMap()
+    //defining getter and setters for convenience
 
-    def name: String = {properties.getOrElse("name", "")}
-    def name_=(name: String) = properties += "name" -> name
+    def name: Option[String] = Text.get(properties, "name")
+    def name_=(name: String) = Text.set(properties, "name", name)
 
-    def age: Int = {properties.getOrElse("age","0").toInt}
-    def age_=(age: Int) = properties += "age" -> age.toString
+    def age: Option[Int] = Numeric.get(properties, "age")
+    def age_=(age: Int) = Numeric.set(properties, "age", age)
 
   }
 
+  /**
+    * Model friendship relation between Person Nodes
+    * the class will correspond to an EdgeType in Padagraph
+    * instances will be UEdges
+    * @param src source Node (restricted to NodeType "person")
+    * @param tgt target Node (restricted to NodeType "person")
+    */
   class FriendOf(src: Person, tgt: Person) extends SocialEdges {
     override val typeName: String = "friend"
     override val source: Person = src
     override val target: Person = tgt
-    override val attributesMapping: Map[String, String] = Map.empty
-    override val meta: Map[String, String] = Map.empty
-
-    override protected val properties: mutable.Map[String, String] = new mutable.HashMap()
+    override val attributesMapping: Map[String, AttributeType] = Map.empty[String,AttributeType]
   }
 
-  class SocialGraph(override val nodes:Set[SocialNodes],
-                    override val edges:Set[SocialEdges]) extends Graph[SocialNodes, SocialEdges] {
-
-    override val name: String = "social"
-    override val owner: String = "pierre"
-  }
+  //defining two nodes
 
   val n1 = new Person()
   val n2 = new Person()
@@ -52,8 +57,18 @@ object Social {
   n2.name = "Jacques"
   n2.age = 32
 
+  // and a relation
   val r1 = new FriendOf(n1,n2)
 
-   val g = new SocialGraph(Set(n1 ,n2), Set[SocialEdges](r1))
+
+  // creating a single instance of a subclass of Graph to define a graph
+  object SocialGraph extends Graph[SocialNodes, SocialEdges] {
+
+    override val name: String = "social"
+    override val owner: String = "pierre"
+
+    override val nodes:Set[SocialNodes] = Set(n1, n2)
+    override val edges:Set[SocialEdges] = Set(r1)
+  }
 
 }

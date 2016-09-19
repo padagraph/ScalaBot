@@ -7,7 +7,7 @@ import scala.collection.{mutable, immutable}
 trait DataType {
   val typeName: String
   val typeDescription: String = ""
-  val meta: immutable.Map[String, String]
-  val attributesMapping: immutable.Map[String, String] // we could define specific datatypes
-  protected val properties: mutable.Map[String, String]
+  val meta: immutable.Map[String, String] = Map.empty
+  val attributesMapping: immutable.Map[String, AttributeType]
+  protected val properties: mutable.Map[String, String] =  new mutable.HashMap()
 }
