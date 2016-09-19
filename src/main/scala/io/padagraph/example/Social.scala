@@ -64,7 +64,7 @@ object Social {
   // creating a single instance of a subclass of Graph to define a graph
   object SocialGraph extends Graph[SocialNodes, SocialEdges] {
 
-    override val name: String = "social"
+    override val name: String = "social8"
     override val owner: String = "pierre"
     override val description =
       """
