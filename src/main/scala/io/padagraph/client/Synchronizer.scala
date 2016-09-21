@@ -44,23 +44,47 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
       None
   }
 
-  def buildTypesIDMapping(): Map[PadaGraphObject, Map[String,String]] = {
+  /**
+    * build the mapping of uuid to (Node|Edge)Types
+    * by fetching info from the server
+    * @return a mapping of ObjectType -> (uuid -> DataType)
+    */
+  def buildTypesIDMapping(): Map[PadaGraphObject, Map[String, DataType]] = {
     getGraphSchema match {
       case Some(schema) =>
         val jsNodeTypes = (schema \ "nodetypes").as[Array[JsObject]]
         val jsEdgeTypes = (schema \ "edgetypes").as[Array[JsObject]]
         Map(
-          PdgNodeType -> jsNodeTypes.map( o => (o \ "name").as[String] -> (o \ "uuid").as[String]).toMap,
-          PdgEdgeType -> jsEdgeTypes.map( o => (o \ "name").as[String] -> (o \ "uuid").as[String]).toMap
+          PdgNodeType -> jsNodeTypes.map( o => (o \ "uuid").as[String] -> graph.getType(PdgNodeType, (o \ "name").as[String])).toMap,
+          PdgEdgeType -> jsEdgeTypes.map( o => (o \ "uuid").as[String] -> graph.getType(PdgEdgeType, (o \ "name").as[String])).toMap
         )
       case None => //retry ad vitam eternam
-        //todo: log it
+        logger.info("failed to fetch type mapping, retrying")
         buildTypesIDMapping()
     }
   }
 
-  var typeMapping: Option[Map[PadaGraphObject, Map[String, String]]] = None
-  def getTypeUuid(padaGraphObject: PadaGraphObject, name: String): Option[String] = {
+  /**
+    * set the uuid property of every datatype object the server knows about
+    * @param mapping
+    */
+  def updateDataTypesWithUuids(mapping: Map[PadaGraphObject, Map[String, DataType]]) = {
+    for( (uuid, edgeType) <- mapping(PdgEdgeType)) edgeType.uuid = Some(uuid)
+    for( (uuid, nodeType) <- mapping(PdgNodeType)) nodeType.uuid = Some(uuid)
+  }
+
+
+  /**
+    * variable to cache UUID mapping fetched from the server
+    */
+  private var typeMapping: Option[Map[PadaGraphObject, Map[String, DataType]]] = None
+
+  /**
+    * This function fetch Uuid of the existing types
+    * and upload the new ones
+    */
+  def synchronizeTypesWithServer() = {
+    // fetch the mapping if necessary
     val mapping = typeMapping match {
       case None =>
         val m = buildTypesIDMapping()
@@ -68,7 +92,28 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
         m
       case Some(m) => m
     }
-    mapping(padaGraphObject).get(name)
+
+    // update local data
+    updateDataTypesWithUuids(mapping)
+
+    // update server
+    for(nt <- graph.nodeTypes.values if nt.uuid.isEmpty)
+      createType(PdgNodeType, nt)
+    for(et <- graph.edgeTypes.values if et.uuid.isEmpty)
+      createType(PdgEdgeType, et)
+
+  }
+
+
+  def getTypeByUuid(padaGraphObject: PadaGraphObject, uuid: String): Option[DataType] = {
+    val mapping = typeMapping match {
+      case None =>
+        val m = buildTypesIDMapping()
+        typeMapping = Some(m)
+        m
+      case Some(m) => m
+    }
+    mapping(padaGraphObject).get(uuid)
   }
 
 
@@ -96,20 +141,16 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     response.code == 200
   }
 
-  def createNodeType(n: N): Boolean = {
-    val payload = stringOfDataType(n)
-    val response = ApiPdgPost(PdgNodeType)(payload).asString
-    response.code == 200
-  }
-
-  def createEdgeType(e:E):  Boolean = {
-    val payload = stringOfDataType(e)
-    val response = ApiPdgPost(PdgEdgeType)(payload).asString
+  def createType(padaGraphObject: PadaGraphObject , t: DataType): Boolean = {
+    val payload = stringOfDataType(t)
+    val response = ApiPdgPost(padaGraphObject)(payload).asString
+    val json = Json.parse(response.body)
+    t.uuid = Some((json \ "uuid").as[String])
     response.code == 200
   }
 
   def postNode(n: N): Boolean = {
-    getTypeUuid(PdgNodeType, n.typeName) match {
+    n.nodeType.uuid match {
       case Some(nodetype) =>
         val payload = JsObject(Seq(
           "nodetype" -> JsString(nodetype),
@@ -126,7 +167,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
   def postEdge(e: E): Boolean = {
     //This match ensures all IDs are known
-    (getTypeUuid(PdgEdgeType, e.typeName),e.source.uuid,e.target.uuid) match {
+    (e.edgeType.uuid, e.source.uuid, e.target.uuid) match {
       case (Some(edgetype),Some(source), Some(target)) =>
         val payload = JsObject(Seq(
           "edgetype" -> JsString(edgetype),
@@ -181,11 +222,11 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
   // finds
 
-  def findNodes(n: Node, start: Int=0, size: Int=100): Stream[N] = {
+  def findNodes(n: Node, start: Int=0, size: Int=100): Stream[String] = {
     val url = buildURL(PdgNode) + "s/find"
 
-    getTypeUuid(PdgNodeType, n.typeName) match {
-      case None => Stream.empty[N]
+    n.nodeType.uuid match {
+      case None => Stream.empty[String]
       case Some(tuuid) =>
         val payload = JsObject(Seq(
           "start" -> JsNumber(start),
@@ -193,14 +234,22 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
           "nodetype" -> JsString(tuuid),
           "properties" -> n.getPropertiesAsJson()
         )).toString()
+        logger.debug(s"find nodes payload\n$payload\n")
         val response = Http(url).header("Content-Type", "application/json").header("Authorization", identToken).postData(payload).asString
+        logger.debug(s"find nodes response\n${response.toString}\n")
         if (response.code != 200) {
-          Stream.empty[N]
+          Stream.empty[String]
         }
         else {
           val json = Json.parse(response.body)
           // todo: voir la gueule de la sortie, par en récursion si il en reste
-          Stream.empty[N]
+          val data = (json \ "nodes").as[Seq[JsObject]].map(_.toString())
+          data.toStream #::: (
+            if ((json \ "count").as[Int] < size)
+              Stream.empty[String]
+            else
+              findNodes(n, start + size, size)
+            )
         }
 
     }
@@ -225,8 +274,8 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
   private def stringOfDataType(x: DataType): String = {
     JsObject(Seq(
-      "name" -> JsString(x.typeName),
-      "description" -> JsString(x.typeDescription),
+      "name" -> JsString(x.name),
+      "description" -> JsString(x.description),
       "properties" -> JsObject(x.attributesMapping.map({ case (k:String, v:AttributeType) => k  -> JsObject(Seq("type" -> JsString(v.name)))}))
     )).toString()
   }
@@ -235,12 +284,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
   def uploadNewGraph(): Unit = {
     if(createGraph()) {
-      val nodetypes = graph.nodes.map(_.typeName)
-      for (t <- nodetypes) graph.nodes.find(_.typeName == t).map(createNodeType)
-
-      val edgetypes = graph.edges.map(_.typeName)
-      for (t <- edgetypes) graph.edges.find(_.typeName == t).map(createEdgeType)
-
+      synchronizeTypesWithServer()
       graph.nodes.foreach(postNode)
       graph.edges.foreach(postEdge)
     }

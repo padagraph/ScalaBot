@@ -9,13 +9,10 @@ object Social {
   abstract class SocialNodes extends Node
   abstract class SocialEdges extends Edge[SocialNodes, SocialNodes]
 
-  /**
-    * Model indiviuals
-    * will correspond to a NodeType in Padagraph
-    * instances will be UNodes
-    */
-  class Person extends SocialNodes {
-    override val typeName: String = "person"
+
+  object NodeTypePerson extends DataType {
+    override val name: String = "person"
+    override val description: String = "type of nodes for individuals"
 
     //declaration of attributes type
     override val attributesMapping: Map[String, AttributeType] =
@@ -24,14 +21,28 @@ object Social {
         "age" -> Numeric
       )
 
-    //defining getter and setters for convenience
+  }
+  /**
+    * Model indiviuals
+    * will correspond to a NodeType in Padagraph
+    * instances will be UNodes
+    */
+  class Person extends SocialNodes {
+    val nodeType = NodeTypePerson
 
+    //defining getter and setters for convenience
     def name: Option[String] = Text.get(properties, "name")
     def name_=(name: String) = Text.set(properties, "name", name)
 
     def age: Option[Int] = Numeric.get(properties, "age")
     def age_=(age: Int) = Numeric.set(properties, "age", age)
 
+  }
+
+
+  object EdgeTypeFriendOf extends DataType {
+    override val name: String = "friend"
+    override val description = "source is a friend of target"
   }
 
   /**
@@ -42,10 +53,9 @@ object Social {
     * @param tgt target Node (restricted to NodeType "person")
     */
   class FriendOf(src: Person, tgt: Person) extends SocialEdges {
-    override val typeName: String = "friend"
+    override val edgeType = EdgeTypeFriendOf
     override val source: Person = src
     override val target: Person = tgt
-    override val attributesMapping: Map[String, AttributeType] = Map.empty[String,AttributeType]
   }
 
   //defining two nodes
@@ -78,6 +88,8 @@ object Social {
 
     override val nodes:Set[SocialNodes] = Set(n1, n2)
     override val edges:Set[SocialEdges] = Set(r1)
+
+    rebuildTypeMappings()
   }
 
   val tok = "WyJwQHAuaW8iLCIkMmIkMTIkR1NlalA4RFdoRjhoTC8wdGJCY3BrT2ZBV2QwYi5keE43akhHM3FVN3lCWGxPMEllTmZYOXkiXQ.CsB5EA.YridEDeCLnvvkB0BonsapcdOjXQ"
