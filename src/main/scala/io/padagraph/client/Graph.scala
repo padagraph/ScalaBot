@@ -1,5 +1,7 @@
 package io.padagraph.client
 
+import play.api.libs.json.JsObject
+
 /**
   * Created by pierre on 9/16/16.
   */
@@ -12,16 +14,17 @@ abstract class Graph[N <: Node, E <: Edge[N,N]] {
   val nodes: Set[N]
   val edges: Set[E]
 
-  var nodeTypes: Map[String, DataType] = Map.empty[String, DataType]
-  var edgeTypes: Map[String, DataType] = Map.empty[String, DataType]
+  var nodeTypes: Map[String, DataType[NodeOrEdge]] = Map.empty[String, DataType[NodeOrEdge]]
+  var edgeTypes: Map[String, DataType[NodeOrEdge]] = Map.empty[String, DataType[NodeOrEdge]]
 
   def rebuildTypeMappings() = {
-    nodeTypes = nodes.map(_.nodeType).map(nt => nt.name -> nt).toMap
-    edgeTypes = edges.map(_.edgeType).map(et => et.name -> et).toMap
+    nodeTypes = nodes.map(_.dataType).map(nt => nt.name -> nt).toMap
+    edgeTypes = edges.map(_.dataType).map(et => et.name -> et).toMap
   }
 
-  def getType(padaGraphObject: PadaGraphObject, name: String): DataType = padaGraphObject match {
+  def getType(padaGraphObject: PadaGraphObject, name: String): DataType[NodeOrEdge] = padaGraphObject match {
     case PdgNodeType => nodeTypes(name)
     case PdgEdgeType => edgeTypes(name)
   }
+
 }

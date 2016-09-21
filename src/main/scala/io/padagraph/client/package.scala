@@ -10,7 +10,7 @@ package object client {
   /**
     * Upper bound type for attributes data types
     */
-  abstract class AttributeType {
+  sealed abstract class AttributeType {
     type T
     val name: String
     def getterConversion(x:String): T
@@ -40,7 +40,7 @@ package object client {
   /**
     * Upper bound class for server-side object
     */
-  abstract class PadaGraphObject
+  sealed abstract class PadaGraphObject
   case object PdgGraph extends PadaGraphObject
   case object PdgUser extends PadaGraphObject
   case object PdgNode extends PadaGraphObject

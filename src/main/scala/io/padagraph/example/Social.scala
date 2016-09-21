@@ -2,6 +2,7 @@ package io.padagraph.example
 
 import scala.collection.mutable
 import io.padagraph.client._
+import play.api.libs.json.JsObject
 /**
   * Created by pierre on 9/16/16.
   */
@@ -10,7 +11,7 @@ object Social {
   abstract class SocialEdges extends Edge[SocialNodes, SocialNodes]
 
 
-  object NodeTypePerson extends DataType {
+  object NodeTypePerson extends DataType[Person](factory = (_, _) => new Person()) {
     override val name: String = "person"
     override val description: String = "type of nodes for individuals"
 
@@ -28,7 +29,7 @@ object Social {
     * instances will be UNodes
     */
   class Person extends SocialNodes {
-    val nodeType = NodeTypePerson
+    override var dataType: DataType[NodeOrEdge] = NodeTypePerson
 
     //defining getter and setters for convenience
     def name: Option[String] = Text.get(properties, "name")
@@ -37,10 +38,11 @@ object Social {
     def age: Option[Int] = Numeric.get(properties, "age")
     def age_=(age: Int) = Numeric.set(properties, "age", age)
 
+
   }
 
 
-  object EdgeTypeFriendOf extends DataType {
+  object EdgeTypeFriendOf extends DataType[FriendOf]({case (src: Option[Person], tgt: Option[Person]) => new FriendOf(src.get, tgt.get)}) {
     override val name: String = "friend"
     override val description = "source is a friend of target"
   }
@@ -53,7 +55,7 @@ object Social {
     * @param tgt target Node (restricted to NodeType "person")
     */
   class FriendOf(src: Person, tgt: Person) extends SocialEdges {
-    override val edgeType = EdgeTypeFriendOf
+    override var dataType : DataType[NodeOrEdge] = EdgeTypeFriendOf
     override val source: Person = src
     override val target: Person = tgt
   }

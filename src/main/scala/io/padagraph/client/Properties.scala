@@ -12,4 +12,8 @@ trait Properties {
   def getPropertiesAsJson(): JsObject = JsObject(properties.map {
     case (k,v) => k -> JsString(v)
   })
+
+  def setPropertiesFromJson(jsObject: JsObject): Unit = {
+    properties ++= jsObject.as[Map[String,String]]
+  }
 }
