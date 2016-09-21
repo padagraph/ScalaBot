@@ -18,6 +18,7 @@ object Social {
     //declaration of attributes type
     override val attributesMapping: Map[String, AttributeType] =
       Map(
+        "label" -> Text,
         "name" -> Text,
         "age" -> Numeric
       )
@@ -31,9 +32,13 @@ object Social {
   class Person extends SocialNodes {
     override var dataType: DataType[NodeOrEdge] = NodeTypePerson
 
+
     //defining getter and setters for convenience
     def name: Option[String] = Text.get(properties, "name")
-    def name_=(name: String) = Text.set(properties, "name", name)
+    def name_=(name: String) = {
+      Text.set(properties, "name", name)
+      Text.set(properties, "label", name)  // label on Nodes will mirror the name property
+    }
 
     def age: Option[Int] = Numeric.get(properties, "age")
     def age_=(age: Int) = Numeric.set(properties, "age", age)
@@ -76,7 +81,7 @@ object Social {
   // creating a single instance of a subclass of Graph to define a graph
   object SocialGraph extends Graph[SocialNodes, SocialEdges] {
 
-    override val name: String = "social8"
+    override val name: String = "social"
     override val owner: String = "pierre"
     override val description =
       """

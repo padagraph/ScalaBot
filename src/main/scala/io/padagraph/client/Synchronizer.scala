@@ -32,6 +32,11 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     id: String => Http(url + id).header("Content-Type", "application/json").header("Authorization", identToken).method("DELETE")
   }
 
+  private def ApiPdgBatchPost(padaGraphObject: PadaGraphObject): String => HttpRequest = {
+    val url = buildURL(padaGraphObject) + "s"
+    payload: String => Http(url).header("Content-Type", "application/json").header("Authorization", identToken).postData(payload)
+  }
+
 
 
   def getGraphSchema: Option[JsObject] = {
@@ -141,6 +146,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
     val request = ApiPdgPost(PdgGraph)(payload)
     val response = request.asString
+    logger.debug(response.toString)
     response.code == 200
   }
 
@@ -155,10 +161,10 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
   def postNode(n: N): Boolean = {
     n.dataType.uuid match {
       case Some(nodetype) =>
-        val payload = JsObject(Seq(
-          "nodetype" -> JsString(nodetype),
+        val payload = Json.obj(
+          "nodetype" -> nodetype,
           "properties" -> n.getPropertiesAsJson()
-        )).toString()
+        ).toString()
         val response = ApiPdgPost(PdgNode)(payload).asString
         logger.info(s"post node response\n$response")
         val json = Json.parse(response.body)
@@ -168,16 +174,49 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     }
   }
 
+  def postNodes(nodes: Stream[N], batchSize: Int=100) = {
+
+    def sendBatch(buffer: List[N]) = {
+      val payload = Json.obj(
+        "nodes" -> buffer.flatMap(n =>
+          n.dataType.uuid.map(nodetype =>
+            Json.obj("nodetype" -> nodetype,
+              "properties" -> n.getPropertiesAsJson()
+            )
+          )
+        )
+      ).toString()
+      val response = ApiPdgBatchPost(PdgNode)(payload).asString
+      //TODO: fetch uuids and set then on nodes
+      logger.debug(response.toString)
+    }
+    def bufferize(cursor: Stream[N], buf: List[N]): Unit ={
+      cursor match {
+        case n #:: tl =>
+          if (buf.size == batchSize -1 ) {
+            sendBatch(n::buf)
+            bufferize(tl, Nil)
+          }
+          else
+            bufferize(tl, n::buf)
+        case Stream() =>
+          sendBatch(buf)
+      }
+    }
+    bufferize(nodes, Nil)
+  }
+
+
   def postEdge(e: E): Boolean = {
     //This match ensures all IDs are known
     (e.dataType.uuid, e.source.uuid, e.target.uuid) match {
       case (Some(edgetype),Some(source), Some(target)) =>
-        val payload = JsObject(Seq(
-          "edgetype" -> JsString(edgetype),
-          "source" -> JsString(source),
-          "target" -> JsString(target),
+        val payload = Json.obj(
+          "edgetype" -> edgetype,
+          "source" -> source,
+          "target" -> target,
           "properties" -> e.getPropertiesAsJson()
-        )).toString()
+        ).toString()
         val response = ApiPdgPost(PdgEdge)(payload).asString
         val json = Json.parse(response.body)
         e.uuid = Some((json \ "uuid").as[String])
@@ -295,7 +334,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
   def uploadNewGraph(): Unit = {
     if(createGraph()) {
       synchronizeTypesWithServer()
-      graph.nodes.foreach(postNode)
+      postNodes(graph.nodes.toStream)
       graph.edges.foreach(postEdge)
     }
   }
