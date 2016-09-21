@@ -5,6 +5,7 @@ package io.padagraph.client
   */
 abstract class NodeOrEdge extends Uuidentifiable with Properties {
   var dataType: DataType[NodeOrEdge]
+  var starred: Boolean = false
 
 
 }

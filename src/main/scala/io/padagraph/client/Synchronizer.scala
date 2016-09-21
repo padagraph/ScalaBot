@@ -176,9 +176,9 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
 
   def postNodes(nodes: Stream[N], batchSize: Int=100) = {
 
-    def sendBatch(buffer: List[N]) = {
+    def sendOneBatch(batch: List[N]) = {
       val payload = Json.obj(
-        "nodes" -> buffer.flatMap(n =>
+        "nodes" -> batch.flatMap(n =>
           n.dataType.uuid.map(nodetype =>
             Json.obj("nodetype" -> nodetype,
               "properties" -> n.getPropertiesAsJson()
@@ -188,19 +188,26 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
       ).toString()
       val response = ApiPdgBatchPost(PdgNode)(payload).asString
       //TODO: fetch uuids and set then on nodes
+      if (response.code == 200) {
+        val results = (Json.parse(response.body) \ "results").as[Array[Array[JsValue]]].map(
+          item => item(1).as[String]
+        )
+        for( (uuid, node) <- results.zip(batch)) node.uuid = Some(uuid)
+      }
       logger.debug(response.toString)
     }
-    def bufferize(cursor: Stream[N], buf: List[N]): Unit ={
+
+    def bufferize(cursor: Stream[N], buffer: List[N]): Unit ={
       cursor match {
         case n #:: tl =>
-          if (buf.size == batchSize -1 ) {
-            sendBatch(n::buf)
+          if (buffer.size == batchSize -1 ) {
+            sendOneBatch(n::buffer)
             bufferize(tl, Nil)
           }
           else
-            bufferize(tl, n::buf)
+            bufferize(tl, n::buffer)
         case Stream() =>
-          sendBatch(buf)
+          sendOneBatch(buffer)
       }
     }
     bufferize(nodes, Nil)
@@ -225,6 +232,55 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     }
   }
 
+  def postEdges(edges: Stream[E], batchSize: Int=100) = {
+    //expect a list of triple: Edge, source.uuid, target.uuid
+    def sendOneBatch(batch: List[(E,String,String)]) = {
+      val payload = Json.obj(
+        "edges" -> batch.flatMap(i =>
+          i._1.dataType.uuid.map(edgetype =>
+            Json.obj(
+              "edgetype" -> edgetype,
+              "source" -> i._2,
+              "target" -> i._3,
+              "properties" -> i._1.getPropertiesAsJson()
+            )
+          )
+        )
+      ).toString()
+      logger.debug(s"calling postEdges with ${payload}")
+      val response = ApiPdgBatchPost(PdgEdge)(payload).asString
+      //TODO: fetch uuids and set then on nodes
+      if (response.code == 200) {
+        val results = (Json.parse(response.body) \ "results").as[Array[Array[JsValue]]].map(
+          item => item(1).as[String]
+        )
+        for( (uuid, triple) <- results.zip(batch)) triple._1.uuid = Some(uuid)
+      }
+      logger.debug(response.toString)
+    }
+
+    def bufferize(cursor: Stream[E], buffer: List[(E,String,String)]): Unit ={
+      cursor match {
+        case e #:: tl =>
+          (e.source.uuid, e.target.uuid) match {
+            case (Some(src), Some(tgt)) =>
+              if (buffer.size == batchSize -1 ) {
+                sendOneBatch((e,src,tgt) :: buffer)
+                bufferize(tl, Nil)
+              }
+              else
+                bufferize(tl, (e,src,tgt)::buffer)
+            case _ =>
+              logger.error("can't upload edge, source or target have no uuid")
+              bufferize(tl, buffer)
+          }
+        case Stream() =>
+          sendOneBatch(buffer)
+      }
+    }
+    bufferize(edges, Nil)
+  }
+
   def deleteNode(n: N): Boolean = {
     n.uuid match {
       case None => false
@@ -243,10 +299,10 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     }
   }
 
-  def starNodes(uuids: List[String]): Boolean = {
+  def starNodes(nodes: List[N]): Boolean = {
     val url = s"$serverURL/graphs/g/${graph.name}/nodes/star"
     val payload = JsObject(Seq(
-      "nodes" -> JsArray(uuids map JsString)
+      "nodes" -> JsArray(nodes.flatMap(_.uuid) map JsString)
     )).toString()
     val response = Http(url).header("Content-Type", "application/json").header("Authorization", identToken).postData(payload).asString
     response.code == 200
@@ -335,7 +391,7 @@ class Synchronizer[N <: Node,E <: Edge[N,N],G <:Graph[N,E]](var serverURL: Strin
     if(createGraph()) {
       synchronizeTypesWithServer()
       postNodes(graph.nodes.toStream)
-      graph.edges.foreach(postEdge)
+      postEdges(graph.edges.toStream)
     }
   }
 }
